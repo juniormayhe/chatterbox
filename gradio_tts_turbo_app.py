@@ -2,6 +2,12 @@ import random
 import numpy as np
 import torch
 import gradio as gr
+from pathlib import Path
+import tempfile
+import io
+import scipy.io.wavfile as wavfile
+from pydub import AudioSegment
+import pyloudnorm as pyln
 from chatterbox.tts_turbo import ChatterboxTurboTTS
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -74,6 +80,42 @@ def set_seed(seed: int):
     np.random.seed(seed)
 
 
+def convert_to_mp3_gradio(wav_tensor, sr, output_path, target_lufs=-27.0, bitrate="128k"):
+    """
+    Convert WAV tensor to MP3 using pydub (more reliable than torchaudio on Windows)
+
+    Args:
+        wav_tensor: torch.Tensor - audio waveform
+        sr: int - sample rate
+        output_path: str - output MP3 file path
+        target_lufs: float - target loudness normalization (-27.0)
+        bitrate: str - MP3 bitrate (e.g., "128k")
+    """
+    # Convert tensor to numpy
+    wav_np = wav_tensor.detach().cpu().numpy().squeeze()
+
+    # Normalize loudness
+    meter = pyln.Meter(sr)
+    try:
+        loudness = meter.integrated_loudness(wav_np)
+        normalized = pyln.normalize.loudness(wav_np, loudness, target_lufs)
+    except:
+        # Fallback if normalization fails (e.g., audio too short)
+        normalized = wav_np
+
+    # Convert to int16 for WAV (required by scipy.wavfile)
+    normalized_int16 = (normalized * 32767).astype(np.int16)
+
+    # Save to in-memory WAV buffer
+    wav_buffer = io.BytesIO()
+    wavfile.write(wav_buffer, sr, normalized_int16)
+    wav_buffer.seek(0)
+
+    # Load with pydub and export as MP3
+    audio_segment = AudioSegment.from_wav(wav_buffer)
+    audio_segment.export(output_path, format="mp3", bitrate=bitrate)
+
+
 def load_model():
     print(f"Loading Chatterbox-Turbo on {DEVICE}...")
     model = ChatterboxTurboTTS.from_pretrained(DEVICE)
@@ -98,6 +140,7 @@ def generate(
     if seed_num != 0:
         set_seed(int(seed_num))
 
+    # Generate audio (WAV tensor)
     wav = model.generate(
         text,
         audio_prompt_path=audio_prompt_path,
@@ -108,7 +151,35 @@ def generate(
         repetition_penalty=repetition_penalty,
         norm_loudness=norm_loudness,
     )
-    return (model.sr, wav.squeeze(0).numpy())
+
+    # Convert to MP3 using pydub
+    import time
+    timestamp = int(time.time() * 1000)
+    temp_dir = Path(tempfile.gettempdir())
+    mp3_filename = f"chatterbox_audio_{timestamp}.mp3"
+    mp3_path = temp_dir / mp3_filename
+
+    try:
+        # Convert WAV tensor to MP3 using pydub
+        convert_to_mp3_gradio(
+            wav_tensor=wav,
+            sr=model.sr,
+            output_path=str(mp3_path),
+            target_lufs=-27.0,
+            bitrate="128k"
+        )
+        print(f"✓ MP3 created: {mp3_path}")
+        print(f"  File size: {mp3_path.stat().st_size} bytes")
+
+        # Return path to MP3 file
+        return str(mp3_path)
+    except Exception as e:
+        print(f"✗ MP3 conversion failed: {e}")
+        import traceback
+        traceback.print_exc()
+        # Fallback to WAV if MP3 fails
+        print("  Falling back to WAV format...")
+        return (model.sr, wav.squeeze(0).numpy())
 
 
 with gr.Blocks(title="Chatterbox Turbo", css=CUSTOM_CSS) as demo:
