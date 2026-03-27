@@ -74,7 +74,6 @@ Examples:
 def main():
     # Fix Unicode on Windows
     if sys.platform == "win32":
-        import os
         os.system("chcp 65001 > nul")
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
