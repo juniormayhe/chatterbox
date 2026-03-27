@@ -57,7 +57,7 @@ def save_as_mp3(
     output_path: Union[str, Path],
     target_lufs: float = -27.0,
     bitrate: int = 128000,  # 128 kbps in bits per second
-    prepend_silence_ms: int = 600
+    prepend_silence_ms: int = 0
 ) -> None:
     """
     Save audio tensor as MP3 with loudness normalization.
@@ -68,7 +68,7 @@ def save_as_mp3(
         output_path: Path to output MP3 file
         target_lufs: Target loudness in LUFS (default: -27.0)
         bitrate: MP3 bitrate in bits per second (default: 128000 for 128 kbps)
-        prepend_silence_ms: Milliseconds of silence to prepend (default: 600)
+        prepend_silence_ms: Milliseconds of silence to prepend (default: 0)
 
     Raises:
         RuntimeError: If MP3 encoding fails
