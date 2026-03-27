@@ -7,8 +7,10 @@ Automated batch processing system for converting long text files into multiple M
 - ✅ Voice cloning from reference audio (MP3, WAV, FLAC, OGG)
 - ✅ Intelligent text splitting at punctuation/word boundaries
 - ✅ MP3 output with loudness normalization (-27 LUFS)
+- ✅ Configurable leading silence per chunk (default 600ms)
 - ✅ Progress tracking with error logging
 - ✅ 19x faster than baseline (optimized turbo model + CUDA)
+- ✅ `add_silence.py` utility for batch-adding silence to existing MP3s
 
 ## Quick Start
 
@@ -29,7 +31,8 @@ python automation/batch_tts.py \
     --output_dir "downloads" \
     --max_chunk_chars 300 \
     --speed_preset fast \
-    --bitrate 128
+    --bitrate 128 \
+    --prepend_silence_ms 600
 ```
 
 ## Command-Line Arguments
@@ -113,8 +116,8 @@ WAV to MP3 conversion with loudness normalization.
 ```python
 from automation.mp3_encoder import save_as_mp3
 
-save_as_mp3(wav_tensor, sample_rate=24000, output_path="audio.mp3",
-            target_lufs=-27.0, bitrate=128000)
+save_as_mp3(wav_tensor, sr=24000, output_path="audio.mp3",
+            target_lufs=-27.0, bitrate=128000, prepend_silence_ms=600)
 ```
 
 ### `add_silence.py`
@@ -192,6 +195,28 @@ python automation/batch_tts.py \
     --text_file "audiobook.txt" \
     --bitrate 192 \
     --speed_preset balanced
+```
+
+### No Leading Silence
+
+```bash
+python automation/batch_tts.py \
+    --reference_audio "voice.mp3" \
+    --text_file "script.txt" \
+    --prepend_silence_ms 0
+```
+
+### Add Silence to Existing MP3s
+
+```bash
+# Single folder
+python automation/add_silence.py --directory downloads/my-episode
+
+# All subfolders
+python automation/add_silence.py --directory downloads --recursive
+
+# Custom duration
+python automation/add_silence.py --directory downloads/my-episode --silence_ms 1000
 ```
 
 ## License
