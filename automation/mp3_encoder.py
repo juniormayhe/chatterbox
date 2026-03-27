@@ -56,7 +56,8 @@ def save_as_mp3(
     sr: int,
     output_path: Union[str, Path],
     target_lufs: float = -27.0,
-    bitrate: int = 128000  # 128 kbps in bits per second
+    bitrate: int = 128000,  # 128 kbps in bits per second
+    prepend_silence_ms: int = 600
 ) -> None:
     """
     Save audio tensor as MP3 with loudness normalization.
@@ -67,10 +68,21 @@ def save_as_mp3(
         output_path: Path to output MP3 file
         target_lufs: Target loudness in LUFS (default: -27.0)
         bitrate: MP3 bitrate in bits per second (default: 128000 for 128 kbps)
+        prepend_silence_ms: Milliseconds of silence to prepend (default: 600)
 
     Raises:
         RuntimeError: If MP3 encoding fails
     """
+    # Ensure shape is [1, num_samples]
+    if wav.dim() == 1:
+        wav = wav.unsqueeze(0)
+
+    # Prepend silence if requested
+    if prepend_silence_ms > 0:
+        silence_samples = int(sr * prepend_silence_ms / 1000)
+        silence = torch.zeros(wav.shape[0], silence_samples, dtype=wav.dtype, device=wav.device)
+        wav = torch.cat([silence, wav], dim=1)
+
     # Convert to numpy
     if isinstance(wav, torch.Tensor):
         wav_np = wav.detach().cpu().numpy()
