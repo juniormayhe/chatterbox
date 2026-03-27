@@ -11,6 +11,7 @@ Usage:
 """
 
 import sys
+import os
 import argparse
 from pathlib import Path
 
@@ -19,16 +20,23 @@ import torchaudio
 
 
 def prepend_silence(path: Path, silence_ms: int) -> None:
-    """Load an MP3, prepend silence, overwrite in-place."""
+    """Load an MP3, prepend silence, overwrite in-place atomically."""
     wav, sr = torchaudio.load(str(path))
     silence_samples = int(sr * silence_ms / 1000)
     silence = torch.zeros(wav.shape[0], silence_samples, dtype=wav.dtype)
     result = torch.cat([silence, wav], dim=1)
-    torchaudio.save(str(path), result, sr, format="mp3")
+    tmp = path.with_suffix(".tmp.mp3")
+    try:
+        # Note: output is re-encoded at torchaudio's default bitrate (typically 128 kbps)
+        torchaudio.save(str(tmp), result, sr, format="mp3")
+        os.replace(str(tmp), str(path))
+    except Exception:
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 def find_mp3s(directory: Path, recursive: bool):
-    """Yield all .mp3 files in directory."""
+    """Return a list of all .mp3 files in directory."""
     pattern = "**/*.mp3" if recursive else "*.mp3"
     return list(directory.glob(pattern))
 
@@ -71,6 +79,9 @@ def main():
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
     args = parse_args()
+    if args.silence_ms < 0:
+        print("✗ --silence_ms must be >= 0")
+        sys.exit(1)
     directory = Path(args.directory)
 
     if not directory.exists():
