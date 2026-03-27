@@ -113,6 +113,8 @@ def convert_to_mp3_gradio(wav_tensor, sr, output_path, target_lufs=-27.0, bitrat
 
     # Load with pydub and export as MP3
     audio_segment = AudioSegment.from_wav(wav_buffer)
+    silence = AudioSegment.silent(duration=350, frame_rate=sr)
+    audio_segment = silence + audio_segment
     audio_segment.export(output_path, format="mp3", bitrate=bitrate)
 
 
