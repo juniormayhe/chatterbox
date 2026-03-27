@@ -43,6 +43,7 @@ python automation/batch_tts.py \
 | `--speed_preset` | str | `fast` | Speed preset: `balanced`, `fast`, `max_speed` |
 | `--target_lufs` | float | `-27.0` | Target loudness normalization (LUFS) |
 | `--bitrate` | int | `128` | MP3 bitrate in kbps |
+| `--prepend_silence_ms` | int | `600` | Milliseconds of silence at start of each chunk |
 | `--device` | str | `cuda` | Device: `cuda` or `cpu` |
 
 ## Output Structure
@@ -115,6 +116,25 @@ from automation.mp3_encoder import save_as_mp3
 save_as_mp3(wav_tensor, sample_rate=24000, output_path="audio.mp3",
             target_lufs=-27.0, bitrate=128000)
 ```
+
+### `add_silence.py`
+Standalone ad-hoc script to prepend silence to existing MP3 files in-place.
+
+```bash
+# Add 600ms silence to all MP3s in a folder
+python automation/add_silence.py --directory downloads/my-episode
+
+# Add 1 second silence recursively across subdirectories
+python automation/add_silence.py --directory downloads --recursive --silence_ms 1000
+```
+
+| Argument | Type | Default | Description |
+|----------|------|---------|-------------|
+| `--directory` | str | *required* | Folder containing MP3 files to process |
+| `--silence_ms` | int | `600` | Milliseconds of silence to prepend |
+| `--recursive` | flag | off | Also process MP3s in subdirectories |
+
+> **Note:** Files are re-encoded at torchaudio's default bitrate (~128 kbps). Loudness normalization is not applied.
 
 ### `batch_tts.py`
 Main CLI script orchestrating the batch processing workflow.

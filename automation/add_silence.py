@@ -4,6 +4,9 @@ Add Silence to MP3 Files
 Prepends a configurable amount of silence (default 600ms) to the start of
 MP3 files in-place. Useful for batch-processing already-generated audio files.
 
+Note: Files are re-encoded at torchaudio's default bitrate (typically 128 kbps),
+not the original file's bitrate. Loudness normalization is not applied.
+
 Usage:
     python automation/add_silence.py --directory downloads/my-episode
     python automation/add_silence.py --directory downloads --recursive
@@ -21,6 +24,8 @@ import torchaudio
 
 def prepend_silence(path: Path, silence_ms: int) -> None:
     """Load an MP3, prepend silence, overwrite in-place atomically."""
+    if silence_ms == 0:
+        return
     wav, sr = torchaudio.load(str(path))
     silence_samples = int(sr * silence_ms / 1000)
     silence = torch.zeros(wav.shape[0], silence_samples, dtype=wav.dtype)
@@ -35,7 +40,7 @@ def prepend_silence(path: Path, silence_ms: int) -> None:
         raise
 
 
-def find_mp3s(directory: Path, recursive: bool):
+def find_mp3s(directory: Path, recursive: bool) -> list:
     """Return a list of all .mp3 files in directory."""
     pattern = "**/*.mp3" if recursive else "*.mp3"
     return list(directory.glob(pattern))
@@ -94,6 +99,7 @@ def main():
         sys.exit(0)
 
     print(f"Found {len(mp3_files)} MP3 file(s) — prepending {args.silence_ms}ms silence...")
+    print("  (Files are re-encoded at torchaudio's default bitrate, ~128 kbps)")
 
     success = 0
     failed = 0
