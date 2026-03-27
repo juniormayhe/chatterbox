@@ -116,6 +116,13 @@ Examples:
     )
 
     parser.add_argument(
+        '--prepend_silence_ms',
+        type=int,
+        default=600,
+        help='Milliseconds of silence to prepend to each audio chunk (default: 600)'
+    )
+
+    parser.add_argument(
         '--device',
         type=str,
         default='cuda',
@@ -191,6 +198,11 @@ def main():
         print(f"✗ Error: Reference audio file not found: {reference_audio_path}")
         sys.exit(1)
 
+    AUDIO_EXTENSIONS = {'.mp3', '.wav', '.flac', '.ogg', '.m4a', '.aac'}
+    if reference_audio_path.suffix.lower() not in AUDIO_EXTENSIONS:
+        print(f"✗ Error: reference_audio must be an audio file (got '{reference_audio_path.suffix}'). Supported: {', '.join(sorted(AUDIO_EXTENSIONS))}")
+        sys.exit(1)
+
     if not text_file_path.exists():
         print(f"✗ Error: Text file not found: {text_file_path}")
         sys.exit(1)
@@ -214,6 +226,7 @@ def main():
     logging.info(f"Speed preset: {args.speed_preset}")
     logging.info(f"Target LUFS: {args.target_lufs}")
     logging.info(f"MP3 bitrate: {args.bitrate} kbps")
+    logging.info(f"Prepend silence: {args.prepend_silence_ms} ms")
     logging.info("")
 
     try:
@@ -264,7 +277,8 @@ def main():
                     model.sr,
                     str(mp3_path),
                     target_lufs=args.target_lufs,
-                    bitrate=args.bitrate * 1000  # Convert kbps to bps
+                    bitrate=args.bitrate * 1000,  # Convert kbps to bps
+                    prepend_silence_ms=args.prepend_silence_ms
                 )
 
                 successful += 1
