@@ -100,6 +100,82 @@ ta.save("test-2.wav", wav, model.sr)
 ```
 See `example_tts.py` and `example_vc.py` for more examples.
 
+---
+
+## Command-Line Tools
+
+Two ready-to-run CLI scripts are included at the repo root for common voice workflows.
+
+---
+
+### `revoice_cli.py` — Re-voice Audio (Recommended)
+
+Transcribes the input audio with **Whisper**, then synthesizes the text fresh using **ChatterboxTTS** with a target voice as the speaker reference. Because the speech is generated from scratch, there are no pitch-shifting or signal-warping artifacts.
+
+**Pipeline:**
+```
+input.mp3 → Whisper ASR → text → ChatterboxTTS (target voice) → output.mp3
+```
+
+**Basic usage:**
+```bash
+python revoice_cli.py --input speech.mp3 --target voice_ref.mp3 --output result.mp3
+```
+
+**Show the Whisper transcript before generating:**
+```bash
+python revoice_cli.py -i speech.mp3 -t voice_ref.mp3 -o result.mp3 --show-transcript
+```
+
+**Higher transcription accuracy (downloads a larger Whisper model):**
+```bash
+python revoice_cli.py -i speech.mp3 -t voice_ref.mp3 -o result.mp3 --whisper-model small
+```
+
+**Optional tempo-matching** — attempts to match the output duration to the input. Only applied when the stretch ratio falls within the safe range (0.80–1.25); skipped automatically beyond that to avoid reverb artifacts:
+```bash
+python revoice_cli.py -i speech.mp3 -t voice_ref.mp3 -o result.mp3 --stretch
+```
+
+**All arguments:**
+
+| Argument | Default | Description |
+|---|---|---|
+| `--input` / `-i` | *required* | Input audio to transcribe (MP3, WAV, etc.) |
+| `--target` / `-t` | *required* | Target voice reference audio |
+| `--output` / `-o` | *required* | Output file (`.mp3` or `.wav`) |
+| `--whisper-model` | `base` | Whisper model size: `tiny` / `base` / `small` / `medium` / `large` |
+| `--exaggeration` | `0.5` | TTS emotional intensity (0.0–1.0) |
+| `--stretch` | off | Opt-in tempo-matching to input duration |
+| `--show-transcript` | off | Print Whisper transcript before generating |
+| `--device` | auto | `cuda`, `mps`, or `cpu` |
+
+> **Note:** Requires `transformers` for Whisper (`pip install transformers`). The Whisper model is downloaded from Hugging Face on first use.
+
+---
+
+### `vc_cli.py` — Voice Conversion
+
+Transforms the voice characteristics of a source audio file to match a target speaker using **ChatterboxVC**, preserving the original speech content and timing.
+
+**Basic usage:**
+```bash
+python vc_cli.py --input source.mp3 --target voice_ref.mp3 --output result.mp3
+```
+
+**All arguments:**
+
+| Argument | Default | Description |
+|---|---|---|
+| `--input` / `-i` | *required* | Source audio (voice to convert) |
+| `--target` / `-t` | *required* | Target voice reference audio |
+| `--output` / `-o` | *required* | Output file (`.mp3` or `.wav`) |
+| `--device` | auto | `cuda`, `mps`, or `cpu` |
+
+> **Tip:** For large pitch differences between source and target (e.g. female → male), `revoice_cli.py` will generally produce cleaner results than `vc_cli.py` because it synthesizes speech fresh rather than warping the source signal.
+
+---
+
 ## Supported Languages 
 Arabic (ar) • Danish (da) • German (de) • Greek (el) • English (en) • Spanish (es) • Finnish (fi) • French (fr) • Hebrew (he) • Hindi (hi) • Italian (it) • Japanese (ja) • Korean (ko) • Malay (ms) • Dutch (nl) • Norwegian (no) • Polish (pl) • Portuguese (pt) • Russian (ru) • Swedish (sv) • Swahili (sw) • Turkish (tr) • Chinese (zh)
 
