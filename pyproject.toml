@@ -26,6 +26,10 @@ dependencies = [
     "omegaconf"
 ]
 
+[project.optional-dependencies]
+# Used by automation/batch_tts.py ASR verification (--verify-asr, default on).
+automation = ["openai-whisper"]
+
 [project.urls]
 Homepage = "https://github.com/resemble-ai/chatterbox"
 Repository = "https://github.com/resemble-ai/chatterbox"

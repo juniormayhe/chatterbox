@@ -10,6 +10,7 @@ Automated batch processing system for converting long text files into multiple M
 - ✅ Paragraph-aware leading silence (600ms at a new line, 300ms mid-line continuation)
 - ✅ Progress tracking with error logging
 - ✅ 19x faster than baseline (optimized turbo model + CUDA)
+- ✅ Two-layer hallucination mitigation (decoder loop guard + ASR verify/regenerate)
 - ✅ `add_silence.py` utility for batch-adding silence to existing MP3s
 
 ## Quick Start
@@ -52,6 +53,11 @@ python automation/batch_tts.py \
 | `--sentence_silence_ms` | int | `300` | Leading silence (ms) for a chunk that continues the same line (split only by `max_chars`) |
 | `--seed` | int | `0` | Random seed; `0` = random, fixed value = reproducible output |
 | `--device` | str | `cuda` | Device: `cuda` or `cpu` |
+| `--repetition-guard` / `--no-repetition-guard` | flag | on | Layer 1: stop the decoder early when it falls into a repetition loop |
+| `--verify-asr` / `--no-verify-asr` | flag | on | Layer 2: transcribe each chunk and regenerate on mismatch with the input text |
+| `--whisper-model` | str | `small` | Whisper model for ASR verification (`tiny`/`base`/`small`/`medium`/`large`) |
+| `--asr-wer-threshold` | float | `0.15` | Max acceptable word error rate vs input text before regenerating |
+| `--max-regen-attempts` | int | `3` | Max generation attempts per chunk when ASR verification fails |
 
 ## Output Structure
 
@@ -96,6 +102,41 @@ The system intelligently splits text into chunks:
 - CUDA-capable GPU (recommended)
 - Chatterbox TTS turbo model
 - Reference audio file (5+ seconds recommended)
+- `openai-whisper` (only when `--verify-asr` is on, which is the default): `pip install openai-whisper`
+
+## Hallucination Mitigation
+
+The Turbo decoder can occasionally **invent words** that are not in the input
+text. The Turbo path has no built-in alignment guard (the `AlignmentStreamAnalyzer`
+only runs for the Llama multilingual model), so two layers are added here:
+
+1. **Decoder loop guard (Layer 1)** — `--repetition-guard` (default on). Detects
+   when the autoregressive speech-token loop collapses into a cyclic pattern
+   (the usual cause of tail "babble") and stops generation early, trimming the
+   looped tokens before they reach the vocoder. Near-zero cost.
+
+2. **ASR verification + regeneration (Layer 2)** — `--verify-asr` (default on).
+   Each generated chunk is transcribed with Whisper and compared to the input
+   text via word error rate (WER). If WER exceeds `--asr-wer-threshold`, the
+   chunk is regenerated (up to `--max-regen-attempts`, with a varied seed). The
+   best-scoring candidate is always kept; chunks that never pass are **flagged**
+   in `output.log` with the input text and transcript for manual review.
+
+```bash
+# Stricter verification, more retries (more compute, higher quality)
+python automation/batch_tts.py \
+    --reference_audio "voice.mp3" \
+    --text_file "script.txt" \
+    --whisper-model medium \
+    --asr-wer-threshold 0.10 \
+    --max-regen-attempts 5
+
+# Disable verification (fastest, original behavior)
+python automation/batch_tts.py \
+    --reference_audio "voice.mp3" \
+    --text_file "script.txt" \
+    --no-verify-asr
+```
 
 ## Error Handling
 

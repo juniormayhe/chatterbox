@@ -31,6 +31,7 @@ from tqdm import tqdm
 # Import local modules
 from text_splitter import split_text_with_breaks
 from mp3_encoder import save_as_mp3
+from asr_verifier import AsrVerifier, normalize as asr_normalize, wer as asr_wer
 
 # Import Chatterbox
 from chatterbox.tts_optimized import ChatterboxTurboOptimized
@@ -186,6 +187,42 @@ Examples:
         help='Random seed for reproducible output (default: 0 = random). Set a fixed value for A/B bisection.'
     )
 
+    # ---- Hallucination mitigation ----
+    parser.add_argument(
+        '--repetition-guard',
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help='Layer 1: stop the decoder early when it falls into a repetition loop (default: on)'
+    )
+
+    parser.add_argument(
+        '--verify-asr',
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help='Layer 2: transcribe each chunk and regenerate on mismatch with the input text (default: on)'
+    )
+
+    parser.add_argument(
+        '--whisper-model',
+        type=str,
+        default='small',
+        help='Whisper model for ASR verification (tiny/base/small/medium/large; default: small)'
+    )
+
+    parser.add_argument(
+        '--asr-wer-threshold',
+        type=float,
+        default=0.15,
+        help='Max acceptable word error rate vs input text before regenerating (default: 0.15)'
+    )
+
+    parser.add_argument(
+        '--max-regen-attempts',
+        type=int,
+        default=3,
+        help='Max generation attempts per chunk when ASR verification fails (default: 3)'
+    )
+
     return parser.parse_args()
 
 
@@ -290,6 +327,12 @@ def main():
     logging.info(f"Top K: {args.top_k}")
     logging.info(f"Repetition penalty: {args.repetition_penalty}")
     logging.info(f"Seed: {args.seed if args.seed != 0 else 'random'}")
+    logging.info(f"Repetition guard: {'on' if args.repetition_guard else 'off'}")
+    logging.info(f"ASR verification: {'on' if args.verify_asr else 'off'}")
+    if args.verify_asr:
+        logging.info(f"  Whisper model: {args.whisper_model}")
+        logging.info(f"  WER threshold: {args.asr_wer_threshold}")
+        logging.info(f"  Max regen attempts: {args.max_regen_attempts}")
     logging.info("")
 
     if args.seed != 0:
@@ -303,6 +346,13 @@ def main():
         logging.info(f"\nLoading reference audio and extracting speaker embeddings...")
         model.prepare_conditionals(str(reference_audio_path))
         logging.info("✓ Speaker embeddings cached")
+
+        # Load ASR verifier (Layer 2 hallucination mitigation)
+        verifier = None
+        if args.verify_asr:
+            logging.info(f"\nLoading ASR verifier (whisper '{args.whisper_model}')...")
+            verifier = AsrVerifier(model_name=args.whisper_model, device=args.device)
+            logging.info("✓ ASR verifier ready")
 
         # Read text file
         logging.info(f"\nReading text file...")
@@ -325,7 +375,10 @@ def main():
 
         successful = 0
         failed = 0
+        flagged = 0  # chunks saved but still above the WER threshold after all retries
         start_time = datetime.now()
+
+        ref_norm = None  # normalized reference text for the current chunk
 
         for i, (chunk, is_para_start) in enumerate(tqdm(chunks, desc="Processing chunks", unit="chunk")):
             chunk_num = i + 1
@@ -335,14 +388,43 @@ def main():
             silence_ms = args.newline_silence_ms if is_para_start else args.sentence_silence_ms
 
             try:
-                # Generate audio
-                wav = model.generate(
-                    chunk,
-                    temperature=args.temperature,
-                    top_p=args.top_p,
-                    top_k=args.top_k,
-                    repetition_penalty=args.repetition_penalty,
-                )
+                # Generate audio. With ASR verification on, retry until the
+                # transcript matches the input text (keep the best candidate).
+                ref_norm = asr_normalize(chunk) if verifier else None
+                best_wav = None
+                best_wer = float('inf')
+                best_hyp = ""
+
+                for attempt in range(args.max_regen_attempts):
+                    # Vary retries when a fixed seed is set so candidates differ.
+                    if args.seed != 0:
+                        set_seed(args.seed + attempt)
+
+                    wav = model.generate(
+                        chunk,
+                        temperature=args.temperature,
+                        top_p=args.top_p,
+                        top_k=args.top_k,
+                        repetition_penalty=args.repetition_penalty,
+                        repetition_guard=args.repetition_guard,
+                    )
+
+                    if verifier is None:
+                        best_wav = wav
+                        break
+
+                    chunk_wer, hyp = verifier.score(chunk, wav, model.sr)
+                    if chunk_wer < best_wer:
+                        best_wer, best_wav, best_hyp = chunk_wer, wav, hyp
+
+                    if chunk_wer <= args.asr_wer_threshold:
+                        break
+                    logging.info(
+                        f"Chunk {chunk_num} attempt {attempt + 1}: WER {chunk_wer:.2f} "
+                        f"> {args.asr_wer_threshold}, regenerating..."
+                    )
+
+                wav = best_wav
 
                 # Save as MP3
                 mp3_path = output_dir / f"audio{chunk_num:02d}.mp3"
@@ -357,6 +439,19 @@ def main():
 
                 successful += 1
                 logging.debug(f"✓ Chunk {chunk_num}/{len(chunks)}: {mp3_path.name}")
+
+                # Flag chunks that never met the threshold (possible hallucination).
+                if verifier is not None and best_wer > args.asr_wer_threshold:
+                    flagged += 1
+                    # Log through the logging handler (not a second file handle)
+                    # so the detail is ordered correctly in output.log.
+                    logging.warning(
+                        f"⚠️  Chunk {chunk_num} flagged: best WER {best_wer:.2f} "
+                        f"> {args.asr_wer_threshold} after {args.max_regen_attempts} attempts. "
+                        f"Saved best candidate ({mp3_path.name}); review manually.\n"
+                        f"    Input:      {ref_norm}\n"
+                        f"    Transcript: {best_hyp}"
+                    )
 
             except Exception as e:
                 failed += 1
@@ -382,6 +477,8 @@ def main():
         logging.info(f"Total chunks: {len(chunks)}")
         logging.info(f"Successful: {successful}")
         logging.info(f"Failed: {failed}")
+        if args.verify_asr:
+            logging.info(f"Flagged (WER above threshold): {flagged}")
         logging.info(f"Success rate: {successful/len(chunks)*100:.1f}%")
         logging.info(f"Total time: {elapsed:.1f} seconds")
         logging.info(f"Average time per chunk: {elapsed/len(chunks):.2f} seconds")
@@ -391,6 +488,8 @@ def main():
 
         if failed > 0:
             logging.warning(f"\n⚠️  {failed} chunk(s) failed. Check {log_file} for details.")
+        elif flagged > 0:
+            logging.warning(f"\n⚠️  {flagged} chunk(s) flagged for possible hallucination. Check {log_file} for details.")
         else:
             logging.info(f"\n🎉 All chunks processed successfully!")
 

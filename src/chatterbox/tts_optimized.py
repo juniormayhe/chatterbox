@@ -210,6 +210,9 @@ class ChatterboxTurboOptimized(ChatterboxTurboTTS):
         norm_loudness=True,
         n_cfm_timesteps=None,
         speed_preset: Optional[Literal['balanced', 'fast', 'max_speed']] = None,
+        repetition_guard: bool = True,
+        guard_max_period: int = 10,
+        guard_min_repeats: int = 5,
     ):
         """
         Generate audio with optimized parameters.
@@ -265,6 +268,9 @@ class ChatterboxTurboOptimized(ChatterboxTurboTTS):
             top_k=top_k,
             top_p=top_p,
             repetition_penalty=repetition_penalty,
+            repetition_guard=repetition_guard,
+            guard_max_period=guard_max_period,
+            guard_min_repeats=guard_min_repeats,
         )
 
         # Remove OOV tokens and add silence to end
