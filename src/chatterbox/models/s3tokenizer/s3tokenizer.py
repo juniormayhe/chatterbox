@@ -61,6 +61,7 @@ class S3Tokenizer(S3TokenizerV2):
                 wav = torch.from_numpy(wav)
             if wav.dim() == 1:
                 wav = wav.unsqueeze(0)
+            wav = wav.float()  # bugfix ensure float32
 
             n_tokens = (wav.shape[1] / sr) * S3_TOKEN_RATE
             n_tokens = np.ceil(n_tokens)
@@ -83,6 +84,8 @@ class S3Tokenizer(S3TokenizerV2):
                 wav = torch.from_numpy(wav)
             if wav.dim() == 1:
                 wav = wav.unsqueeze(0)
+
+            wav = wav.float()  # bugfix ensure float32
 
             processed_wavs.append(wav)
         return processed_wavs
@@ -114,6 +117,7 @@ class S3Tokenizer(S3TokenizerV2):
             mels.append(mel.squeeze(0))
 
         mels, mel_lens = padding(mels)
+        mels = mels.float()  # bugfix ensure float32 before quantize
         if accelerator is None:
             tokenizer = self
         else:
@@ -160,8 +164,10 @@ class S3Tokenizer(S3TokenizerV2):
         )
         magnitudes = stft[..., :-1].abs()**2
 
-        mel_spec = self._mel_filters.to(self.device) @ magnitudes
-
+#        mel_spec = self._mel_filters.to(self.device) @ magnitudes
+#torch cuda 124:
+        mel_spec = self._mel_filters.to(self.device, dtype=magnitudes.dtype) @ magnitudes
+        
         log_spec = torch.clamp(mel_spec, min=1e-10).log10()
         log_spec = torch.maximum(log_spec, log_spec.max() - 8.0)
         log_spec = (log_spec + 4.0) / 4.0
