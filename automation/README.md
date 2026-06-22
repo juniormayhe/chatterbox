@@ -7,7 +7,7 @@ Automated batch processing system for converting long text files into multiple M
 - ✅ Voice cloning from reference audio (MP3, WAV, FLAC, OGG)
 - ✅ Intelligent text splitting at punctuation/word boundaries
 - ✅ MP3 output with loudness normalization (-27 LUFS)
-- ✅ Configurable leading silence per chunk (default 600ms)
+- ✅ Paragraph-aware leading silence (600ms at a new line, 300ms mid-line continuation)
 - ✅ Progress tracking with error logging
 - ✅ 19x faster than baseline (optimized turbo model + CUDA)
 - ✅ `add_silence.py` utility for batch-adding silence to existing MP3s
@@ -32,7 +32,9 @@ python automation/batch_tts.py \
     --max_chunk_chars 300 \
     --speed_preset fast \
     --bitrate 128 \
-    --prepend_silence_ms 600
+    --newline_silence_ms 600 \
+    --sentence_silence_ms 300 \
+    --seed 12345
 ```
 
 ## Command-Line Arguments
@@ -46,7 +48,9 @@ python automation/batch_tts.py \
 | `--speed_preset` | str | `fast` | Speed preset: `balanced`, `fast`, `max_speed` |
 | `--target_lufs` | float | `-27.0` | Target loudness normalization (LUFS) |
 | `--bitrate` | int | `128` | MP3 bitrate in kbps |
-| `--prepend_silence_ms` | int | `600` | Milliseconds of silence at start of each chunk |
+| `--newline_silence_ms` | int | `600` | Leading silence (ms) for a chunk that starts a new line/paragraph |
+| `--sentence_silence_ms` | int | `300` | Leading silence (ms) for a chunk that continues the same line (split only by `max_chars`) |
+| `--seed` | int | `0` | Random seed; `0` = random, fixed value = reproducible output |
 | `--device` | str | `cuda` | Device: `cuda` or `cpu` |
 
 ## Output Structure
@@ -203,7 +207,8 @@ python automation/batch_tts.py \
 python automation/batch_tts.py \
     --reference_audio "voice.mp3" \
     --text_file "script.txt" \
-    --prepend_silence_ms 0
+    --newline_silence_ms 0 \
+    --sentence_silence_ms 0
 ```
 
 ### Add Silence to Existing MP3s

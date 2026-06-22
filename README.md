@@ -102,6 +102,50 @@ See `example_tts.py` and `example_vc.py` for more examples.
 
 ---
 
+## Scripts Overview
+
+Purpose of every script in this repository.
+
+### Minimal examples (repo root)
+
+| Script | Purpose |
+|---|---|
+| `example_tts.py` | Smallest English example with `ChatterboxTTS` plus a multilingual (French) sample; shows optional voice cloning via `audio_prompt_path`. Auto-detects `cuda`/`mps`/`cpu`. |
+| `example_tts_turbo.py` | Smallest example for the **Turbo** model (`ChatterboxTurboTTS`), demonstrating paralinguistic tags such as `[chuckle]`. |
+| `example_for_mac.py` | `example_tts.py` patched for Apple Silicon (MPS): forces `map_location` on `torch.load` and tunes `exaggeration`/`cfg_weight`. |
+| `example_vc.py` | Smallest voice-conversion example using `ChatterboxVC` (convert a source clip to a target voice). |
+
+### Gradio web UIs (repo root)
+
+| Script | Purpose |
+|---|---|
+| `gradio_tts_app.py` | Web UI for the original `ChatterboxTTS` with exaggeration, CFG, temperature and seed controls. |
+| `gradio_tts_turbo_app.py` | Web UI for Chatterbox-Turbo with clickable paralinguistic-tag buttons and advanced sampling controls. The batch pipeline mirrors this app's defaults. |
+| `gradio_vc_app.py` | Web UI for voice conversion (`ChatterboxVC`); serves on port `7861`. |
+| `multilingual_app.py` | Web UI for `ChatterboxMultilingualTTS` across 23+ languages, with a built-in demo prompt per language. |
+
+### Command-line tools (repo root)
+
+| Script | Purpose |
+|---|---|
+| `revoice_cli.py` | Re-voice audio: Whisper ASR → text → `ChatterboxTTS` in a target voice, avoiding pitch-warp artifacts. Optional tempo-matching. |
+| `revoice_timed_cli.py` | Timing-preserving re-voice: transcribes with segment-level timestamps, synthesizes each segment, time-stretches it to the original duration, and keeps the original silence gaps. |
+| `vc_cli.py` | Voice conversion: warp a source clip to a target speaker via `ChatterboxVC`. |
+
+### Batch automation (`automation/`)
+
+| Script | Purpose |
+|---|---|
+| `batch_tts.py` | Main batch orchestrator. Splits a long `.txt`/`.md` into chunks, clones the reference voice, and writes sequential `audioNN.mp3` files plus `output.log`. Paragraph-aware leading silence (600 ms at a new line, 300 ms for a mid-line continuation) and a reproducible `--seed`. |
+| `fast_tts.py` | Speed-first batch variant: writes WAV to a queue folder with no loudness normalization, no silence padding, and the `max_speed` preset. |
+| `text_splitter.py` | Sentence/paragraph chunking. `split_text()` returns flat chunks; `split_text_with_breaks()` tags each chunk as line-start vs. continuation so the caller can vary silence. |
+| `mp3_encoder.py` | Converts a WAV tensor to MP3 with LUFS loudness normalization and optional leading silence; falls back to WAV on encoder failure. |
+| `add_silence.py` | Standalone utility that prepends silence to existing MP3 files in-place (single folder or recursive). |
+
+Detailed flags for the two main CLI tools are below; see `automation/README.md` for the full batch reference.
+
+---
+
 ## Command-Line Tools
 
 Two ready-to-run CLI scripts are included at the repo root for common voice workflows.
