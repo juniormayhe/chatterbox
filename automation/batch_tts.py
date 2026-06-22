@@ -19,19 +19,30 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
 import argparse
 import logging
+import random
 import traceback
 from datetime import datetime
 from typing import Optional
 
+import numpy as np
 import torch
 from tqdm import tqdm
 
 # Import local modules
-from text_splitter import split_text, split_markdown
+from text_splitter import split_text_with_breaks
 from mp3_encoder import save_as_mp3
 
 # Import Chatterbox
 from chatterbox.tts_optimized import ChatterboxTurboOptimized
+
+
+def set_seed(seed: int):
+    """Seed all RNGs for reproducible generation (bisection / A-B testing)."""
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    random.seed(seed)
+    np.random.seed(seed)
 
 
 def setup_logging(log_file: Path):
@@ -90,7 +101,7 @@ Examples:
         '--max_chunk_chars',
         type=int,
         default=300,
-        help='Maximum characters per audio chunk (default: 300)'
+        help='Soft packing target per chunk in characters (default: 300, matches Gradio). Single sentences longer than this are emitted whole.'
     )
 
     parser.add_argument(
@@ -104,8 +115,8 @@ Examples:
     parser.add_argument(
         '--target_lufs',
         type=float,
-        default=-27.0,
-        help='Target loudness normalization in LUFS (default: -27.0)'
+        default=-14.0,
+        help='Target loudness normalization in LUFS (default: -14.0)'
     )
 
     parser.add_argument(
@@ -116,10 +127,17 @@ Examples:
     )
 
     parser.add_argument(
-        '--prepend_silence_ms',
+        '--newline_silence_ms',
         type=int,
         default=600,
-        help='Milliseconds of silence to prepend to each audio chunk (default: 600)'
+        help='Silence (ms) prepended to a chunk that starts a new line/paragraph (default: 600)'
+    )
+
+    parser.add_argument(
+        '--sentence_silence_ms',
+        type=int,
+        default=300,
+        help='Silence (ms) prepended to a chunk that continues the same line, split only by max_chars (default: 300)'
     )
 
     parser.add_argument(
@@ -128,6 +146,44 @@ Examples:
         default='cuda',
         choices=['cuda', 'cpu'],
         help='Device to use for inference (default: cuda)'
+    )
+
+    # Generation settings tuned for pronunciation accuracy and phoneme stability
+    # (reduces V->B, TH->D, S->Z substitutions). Min P is omitted: the Turbo
+    # model ignores it.
+    parser.add_argument(
+        '--temperature',
+        type=float,
+        default=0.5,
+        help='Sampling temperature (default: 0.5, tuned for pronunciation accuracy)'
+    )
+
+    parser.add_argument(
+        '--top_p',
+        type=float,
+        default=0.9,
+        help='Top-p nucleus sampling (default: 0.9)'
+    )
+
+    parser.add_argument(
+        '--top_k',
+        type=int,
+        default=100,
+        help='Top-k sampling (default: 100)'
+    )
+
+    parser.add_argument(
+        '--repetition_penalty',
+        type=float,
+        default=1.1,
+        help='Repetition penalty (default: 1.1)'
+    )
+
+    parser.add_argument(
+        '--seed',
+        type=int,
+        default=0,
+        help='Random seed for reproducible output (default: 0 = random). Set a fixed value for A/B bisection.'
     )
 
     return parser.parse_args()
@@ -226,8 +282,17 @@ def main():
     logging.info(f"Speed preset: {args.speed_preset}")
     logging.info(f"Target LUFS: {args.target_lufs}")
     logging.info(f"MP3 bitrate: {args.bitrate} kbps")
-    logging.info(f"Prepend silence: {args.prepend_silence_ms} ms")
+    logging.info(f"Newline silence: {args.newline_silence_ms} ms")
+    logging.info(f"Sentence silence: {args.sentence_silence_ms} ms")
+    logging.info(f"Temperature: {args.temperature}")
+    logging.info(f"Top P: {args.top_p}")
+    logging.info(f"Top K: {args.top_k}")
+    logging.info(f"Repetition penalty: {args.repetition_penalty}")
+    logging.info(f"Seed: {args.seed if args.seed != 0 else 'random'}")
     logging.info("")
+
+    if args.seed != 0:
+        set_seed(args.seed)
 
     try:
         # Load TTS model
@@ -243,16 +308,14 @@ def main():
         text = read_text_file(text_file_path)
         logging.info(f"✓ Read {len(text)} characters")
 
-        # Split text into chunks
+        # Split text into chunks (paragraph-aware: each chunk is tagged with
+        # whether it starts a new line, which drives its leading silence).
         logging.info(f"\nSplitting text into chunks (max {args.max_chunk_chars} chars)...")
-        if text_file_path.suffix.lower() == '.md':
-            chunks = split_markdown(text, max_chars=args.max_chunk_chars)
-        else:
-            chunks = split_text(text, max_chars=args.max_chunk_chars)
+        chunks = split_text_with_breaks(text, max_chars=args.max_chunk_chars)
 
         logging.info(f"✓ Created {len(chunks)} chunks")
-        logging.info(f"  Average chunk size: {sum(len(c) for c in chunks) / len(chunks):.0f} chars")
-        logging.info(f"  Min/Max: {min(len(c) for c in chunks)}/{max(len(c) for c in chunks)} chars")
+        logging.info(f"  Average chunk size: {sum(len(c) for c, _ in chunks) / len(chunks):.0f} chars")
+        logging.info(f"  Min/Max: {min(len(c) for c, _ in chunks)}/{max(len(c) for c, _ in chunks)} chars")
 
         # Process chunks
         logging.info(f"\n" + "=" * 80)
@@ -263,12 +326,22 @@ def main():
         failed = 0
         start_time = datetime.now()
 
-        for i, chunk in enumerate(tqdm(chunks, desc="Processing chunks", unit="chunk")):
+        for i, (chunk, is_para_start) in enumerate(tqdm(chunks, desc="Processing chunks", unit="chunk")):
             chunk_num = i + 1
+
+            # Longer pause when the chunk opens a new line/paragraph, shorter
+            # pause when it merely continues the same line.
+            silence_ms = args.newline_silence_ms if is_para_start else args.sentence_silence_ms
 
             try:
                 # Generate audio
-                wav = model.generate(chunk)
+                wav = model.generate(
+                    chunk,
+                    temperature=args.temperature,
+                    top_p=args.top_p,
+                    top_k=args.top_k,
+                    repetition_penalty=args.repetition_penalty,
+                )
 
                 # Save as MP3
                 mp3_path = output_dir / f"audio{chunk_num:02d}.mp3"
@@ -278,7 +351,7 @@ def main():
                     str(mp3_path),
                     target_lufs=args.target_lufs,
                     bitrate=args.bitrate * 1000,  # Convert kbps to bps
-                    prepend_silence_ms=args.prepend_silence_ms
+                    prepend_silence_ms=silence_ms
                 )
 
                 successful += 1
