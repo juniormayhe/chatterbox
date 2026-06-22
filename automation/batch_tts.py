@@ -100,8 +100,8 @@ Examples:
     parser.add_argument(
         '--max_chunk_chars',
         type=int,
-        default=300,
-        help='Soft packing target per chunk in characters (default: 300, matches Gradio). Single sentences longer than this are emitted whole.'
+        default=150,
+        help='Soft packing target per chunk in characters (default: 150). Single sentences longer than this are emitted whole.'
     )
 
     parser.add_argument(

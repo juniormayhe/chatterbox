@@ -80,12 +80,6 @@ def save_as_mp3(
     if wav.dim() == 1:
         wav = wav.unsqueeze(0)
 
-    # Prepend silence if requested
-    if prepend_silence_ms > 0:
-        silence_samples = int(sr * prepend_silence_ms / 1000)
-        silence = torch.zeros(wav.shape[0], silence_samples, dtype=wav.dtype, device=wav.device)
-        wav = torch.cat([silence, wav], dim=1)
-
     # Convert to numpy
     if isinstance(wav, torch.Tensor):
         wav_np = wav.detach().cpu().numpy()
@@ -94,6 +88,36 @@ def save_as_mp3(
 
     # Ensure correct shape [num_samples] for normalization
     wav_np = wav_np.squeeze()
+
+    import librosa
+    # Use effects.split to identify non-silent intervals (top_db=38 is safe for TTS room tone)
+    # frame_length=4096 ensures we don't accidentally split during short intra-word consonants
+    intervals = librosa.effects.split(wav_np, top_db=38, frame_length=4096, hop_length=1024)
+    
+    if len(intervals) > 0:
+        max_silence_samples = int(sr * 400 / 1000)  # Cap internal silences at 400ms
+        
+        # Start with the first non-silent interval (this naturally trims leading silence)
+        processed_wav = [wav_np[intervals[0][0]:intervals[0][1]]]
+        last_end = intervals[0][1]
+        
+        for start, end in intervals[1:]:
+            silence_gap = start - last_end
+            if silence_gap > max_silence_samples:
+                silence_gap = max_silence_samples
+                
+            processed_wav.append(wav_np[last_end:last_end + silence_gap])
+            processed_wav.append(wav_np[start:end])
+            last_end = end
+            
+        wav_np = np.concatenate(processed_wav)
+        # Trailing silence is naturally trimmed since we stop at the last interval's end.
+    
+    # Prepend explicit silence requested by batch_tts (so pacing between chunks is exactly right)
+    if prepend_silence_ms > 0:
+        silence_samples = int(sr * prepend_silence_ms / 1000)
+        silence_np = np.zeros(silence_samples, dtype=wav_np.dtype)
+        wav_np = np.concatenate([silence_np, wav_np])
 
     # Normalize loudness
     normalized = normalize_loudness(wav_np, sr, target_lufs)
@@ -160,6 +184,26 @@ def save_as_wav(
 
     # Ensure correct shape
     wav_np = wav_np.squeeze()
+
+    import librosa
+    intervals = librosa.effects.split(wav_np, top_db=38, frame_length=4096, hop_length=1024)
+    
+    if len(intervals) > 0:
+        max_silence_samples = int(sr * 400 / 1000)
+        
+        processed_wav = [wav_np[intervals[0][0]:intervals[0][1]]]
+        last_end = intervals[0][1]
+        
+        for start, end in intervals[1:]:
+            silence_gap = start - last_end
+            if silence_gap > max_silence_samples:
+                silence_gap = max_silence_samples
+                
+            processed_wav.append(wav_np[last_end:last_end + silence_gap])
+            processed_wav.append(wav_np[start:end])
+            last_end = end
+            
+        wav_np = np.concatenate(processed_wav)
 
     # Normalize loudness
     normalized = normalize_loudness(wav_np, sr, target_lufs)
