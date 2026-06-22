@@ -226,10 +226,10 @@ with gr.Blocks(title="Chatterbox Turbo", css=CUSTOM_CSS) as demo:
 
             with gr.Accordion("Advanced Options", open=False):
                 seed_num = gr.Number(value=0, label="Random seed (0 for random)")
-                temp = gr.Slider(0.05, 2.0, step=.05, label="Temperature", value=0.8)
-                top_p = gr.Slider(0.00, 1.00, step=0.01, label="Top P", value=0.95)
-                top_k = gr.Slider(0, 1000, step=10, label="Top K", value=1000)
-                repetition_penalty = gr.Slider(1.00, 2.00, step=0.05, label="Repetition Penalty", value=1.2)
+                temp = gr.Slider(0.05, 2.0, step=.05, label="Temperature", value=0.5)
+                top_p = gr.Slider(0.00, 1.00, step=0.01, label="Top P", value=0.9)
+                top_k = gr.Slider(0, 1000, step=10, label="Top K", value=100)
+                repetition_penalty = gr.Slider(1.00, 2.00, step=0.05, label="Repetition Penalty", value=1.1)
                 min_p = gr.Slider(0.00, 1.00, step=0.01, label="Min P (Set to 0 to disable)", value=0.00)
                 norm_loudness = gr.Checkbox(value=True, label="Normalize Loudness (-27 LUFS)")
 

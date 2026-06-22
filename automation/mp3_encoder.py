@@ -15,7 +15,7 @@ from typing import Union
 def normalize_loudness(
     wav: np.ndarray,
     sr: int,
-    target_lufs: float = -27.0
+    target_lufs: float = -14.0
 ) -> np.ndarray:
     """
     Normalize audio loudness to target LUFS.
@@ -23,7 +23,7 @@ def normalize_loudness(
     Args:
         wav: Audio waveform as numpy array (1D or 2D)
         sr: Sample rate in Hz
-        target_lufs: Target loudness in LUFS (default: -27.0)
+        target_lufs: Target loudness in LUFS (default: -14.0)
 
     Returns:
         Loudness-normalized audio as numpy array
@@ -45,17 +45,20 @@ def normalize_loudness(
     # Normalize to target loudness
     try:
         normalized = pyln.normalize.loudness(wav, loudness, target_lufs)
-        return normalized
     except (ValueError, ZeroDivisionError):
-        # Normalization failed, return original
         return wav
+
+    # Peak limit at -1 dBFS to prevent clipping
+    peak_limit = 10 ** (-1.0 / 20)
+    normalized = np.clip(normalized, -peak_limit, peak_limit)
+    return normalized
 
 
 def save_as_mp3(
     wav: torch.Tensor,
     sr: int,
     output_path: Union[str, Path],
-    target_lufs: float = -27.0,
+    target_lufs: float = -14.0,
     bitrate: int = 128000,  # 128 kbps in bits per second
     prepend_silence_ms: int = 0
 ) -> None:
@@ -66,7 +69,7 @@ def save_as_mp3(
         wav: Audio tensor (shape: [1, num_samples] or [num_samples])
         sr: Sample rate in Hz
         output_path: Path to output MP3 file
-        target_lufs: Target loudness in LUFS (default: -27.0)
+        target_lufs: Target loudness in LUFS (default: -14.0)
         bitrate: MP3 bitrate in bits per second (default: 128000 for 128 kbps)
         prepend_silence_ms: Milliseconds of silence to prepend (default: 0)
 
@@ -136,7 +139,7 @@ def save_as_wav(
     wav: torch.Tensor,
     sr: int,
     output_path: Union[str, Path],
-    target_lufs: float = -27.0
+    target_lufs: float = -14.0
 ) -> None:
     """
     Save audio tensor as WAV with loudness normalization.
@@ -147,7 +150,7 @@ def save_as_wav(
         wav: Audio tensor (shape: [1, num_samples] or [num_samples])
         sr: Sample rate in Hz
         output_path: Path to output WAV file
-        target_lufs: Target loudness in LUFS (default: -27.0)
+        target_lufs: Target loudness in LUFS (default: -14.0)
     """
     # Convert to numpy
     if isinstance(wav, torch.Tensor):
