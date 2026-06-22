@@ -44,5 +44,8 @@ syn_out/
 checkpoints/
 .gradio
 
+# Local virtualenv (root-level only; not src/chatterbox package)
+/chatterbox/
+
 # Ignore generated sample .wav files
 **/*.wav
