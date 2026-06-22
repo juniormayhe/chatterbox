@@ -263,8 +263,9 @@ def main():
         print(f"✗ Error: Text file not found: {text_file_path}")
         sys.exit(1)
 
-    # Create output directory based on text filename
-    output_name = text_file_path.stem
+    # Create output directory based on text filename + timestamp
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    output_name = f"{text_file_path.stem}-{timestamp}"
     output_dir = output_base_dir / output_name
     output_dir.mkdir(parents=True, exist_ok=True)
 
