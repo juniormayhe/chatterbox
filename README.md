@@ -46,6 +46,23 @@ pip install -e .
 ```
 We developed and tested Chatterbox on Python 3.11 on Debian 11 OS; the versions of the dependencies are pinned in `pyproject.toml` to ensure consistency. You can modify the code or dependencies in this installation mode.
 
+### Windows setup notes
+
+- **Install Python 3.11 and FFmpeg** if you don't already have them:
+  ```powershell
+  winget install Python.Python.3.11
+  winget install Gyan.FFmpeg
+  ```
+- **Use Python 3.11.** Create the virtual environment with the 3.11 interpreter explicitly:
+  ```powershell
+  py -3.11 -m venv .venv
+  .venv\Scripts\activate
+  ```
+- **Pin `setuptools<81` and install `wheel`.** setuptools 81+ removed the bundled `pkg_resources` module, which the `perth` watermarker still depends on. Without this, model loading fails with `TypeError: 'NoneType' object is not callable` at `perth.PerthImplicitWatermarker()`. Install `wheel` as well if it's missing:
+  ```powershell
+  .venv\Scripts\python.exe -m pip install "setuptools<81" wheel
+  ```
+
 ## Usage
 
 ##### Chatterbox-Turbo
