@@ -116,8 +116,9 @@ Examples:
     parser.add_argument(
         '--target_lufs',
         type=float,
-        default=-14.0,
-        help='Target loudness normalization in LUFS (default: -14.0)'
+        default=-24.0,
+        help='Target loudness normalization in LUFS (default: -24.0; ~10 dB quieter '
+             'than the old -14.0 streaming level)'
     )
 
     parser.add_argument(
