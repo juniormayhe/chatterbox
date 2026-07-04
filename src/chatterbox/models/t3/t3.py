@@ -25,7 +25,6 @@ from .modules.t3_config import T3Config
 from .llama_configs import LLAMA_CONFIGS
 from .inference.t3_hf_backend import T3HuggingfaceBackend
 from .inference.alignment_stream_analyzer import AlignmentStreamAnalyzer
-from .inference.repetition_guard import detect_token_loop, find_loop_period
 from ..utils import AttrDict
 
 
@@ -414,7 +413,7 @@ class T3(nn.Module):
 
     @torch.inference_mode()
     def inference_turbo(self, t3_cond, text_tokens, temperature=0.8, top_k=1000, top_p=0.95, repetition_penalty=1.2,
-                        max_gen_len=1000, repetition_guard=True, guard_max_period=10, guard_min_repeats=5):
+                        max_gen_len=1000):
 
         logits_processors = LogitsProcessorList()
         if temperature > 0 and temperature != 1.0:
@@ -455,10 +454,6 @@ class T3(nn.Module):
         generated_speech_tokens.append(next_speech_token)
         current_speech_token = next_speech_token
 
-        # Scalar history for the runaway/repetition loop guard (Layer 1
-        # hallucination mitigation; the Turbo path has no alignment analyzer).
-        token_id_history = [int(next_speech_token.view(-1)[0].item())]
-
         for _ in tqdm(range(max_gen_len)):
             current_speech_embed = self.speech_emb(current_speech_token)
 
@@ -485,27 +480,6 @@ class T3(nn.Module):
             current_speech_token = next_speech_token
             if torch.all(next_speech_token == self.hp.stop_speech_token):
                 break
-
-            # Layer 1 guard: if the tail has collapsed into a cyclic pattern the
-            # model is hallucinating (stuck looping). Stop early; the loop tail
-            # is dropped below so it never reaches the vocoder.
-            if repetition_guard:
-                token_id_history.append(int(next_speech_token.view(-1)[0].item()))
-                period = find_loop_period(
-                    token_id_history,
-                    max_period=guard_max_period,
-                    min_repeats=guard_min_repeats,
-                )
-                if period is not None:
-                    logger.warning(
-                        f"🚨 Repetition loop detected (period={period}); stopping "
-                        f"generation early and trimming {period * guard_min_repeats} looped tokens."
-                    )
-                    # Drop the looped tail so the babble is not rendered.
-                    del generated_speech_tokens[-(period * guard_min_repeats):]
-                    if not generated_speech_tokens:
-                        generated_speech_tokens.append(next_speech_token)
-                    break
 
         all_tokens = torch.cat(generated_speech_tokens, dim=1)
 

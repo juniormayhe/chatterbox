@@ -155,8 +155,10 @@ Examples:
     parser.add_argument(
         '--temperature',
         type=float,
-        default=0.5,
-        help='Sampling temperature (default: 0.5, tuned for pronunciation accuracy)'
+        default=0.8,
+        help='Sampling temperature (default: 0.8, the Turbo model default). Lower '
+             'values (e.g. 0.5) improve pronunciation but can collapse generation '
+             'to the first word for some reference clips.'
     )
 
     parser.add_argument(
@@ -198,8 +200,8 @@ Examples:
     parser.add_argument(
         '--verify-asr',
         action=argparse.BooleanOptionalAction,
-        default=True,
-        help='Layer 2: transcribe each chunk and regenerate on mismatch with the input text (default: on)'
+        default=False,
+        help='Layer 2: transcribe each chunk and regenerate on mismatch with the input text (default: off). Pass --verify-asr to enable the Whisper check.'
     )
 
     parser.add_argument(

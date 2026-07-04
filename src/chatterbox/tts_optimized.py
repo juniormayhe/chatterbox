@@ -210,7 +210,8 @@ class ChatterboxTurboOptimized(ChatterboxTurboTTS):
         norm_loudness=True,
         n_cfm_timesteps=None,
         speed_preset: Optional[Literal['balanced', 'fast', 'max_speed']] = None,
-        repetition_guard: bool = True,
+        # Accepted for CLI backward-compat only; ignored since the core reset to upstream.
+        repetition_guard: bool = False,
         guard_max_period: int = 10,
         guard_min_repeats: int = 5,
     ):
@@ -252,6 +253,15 @@ class ChatterboxTurboOptimized(ChatterboxTurboTTS):
         if cfg_weight > 0.0 or exaggeration > 0.0 or min_p > 0.0:
             logger.warning("CFG, min_p and exaggeration are not supported by Turbo version and will be ignored.")
 
+        # The repetition guard was removed when the model core was reset to upstream
+        # Chatterbox. These kwargs are accepted for CLI backward-compatibility but are
+        # now no-ops (upstream `inference_turbo` does not support them).
+        if repetition_guard:
+            logger.warning(
+                "repetition_guard is no longer supported after the upstream core reset; "
+                "the flag is ignored. Rely on the ASR verification layer for hallucination guarding."
+            )
+
         # Import here to avoid circular dependency
         from .tts_turbo import punc_norm, S3GEN_SIL
 
@@ -268,9 +278,6 @@ class ChatterboxTurboOptimized(ChatterboxTurboTTS):
             top_k=top_k,
             top_p=top_p,
             repetition_penalty=repetition_penalty,
-            repetition_guard=repetition_guard,
-            guard_max_period=guard_max_period,
-            guard_min_repeats=guard_min_repeats,
         )
 
         # Remove OOV tokens and add silence to end
