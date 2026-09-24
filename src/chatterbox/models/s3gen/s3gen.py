@@ -137,7 +137,10 @@ class S3Token2Mel(torch.nn.Module):
 
         ref_wav_24 = ref_wav
         if ref_sr != S3GEN_SR:
-            ref_wav_24 = get_resampler(ref_sr, S3GEN_SR, device)(ref_wav)
+            # Torchaudio's sinc resampler can exceed MPS's output-channel
+            # limit for common sample-rate conversions (for example 44.1kHz
+            # to 24kHz). Resample on CPU, then continue inference on device.
+            ref_wav_24 = get_resampler(ref_sr, S3GEN_SR, "cpu")(ref_wav.cpu())
         ref_wav_24 = ref_wav_24.to(device=device, dtype=self.dtype)
 
         ref_mels_24 = self.mel_extractor(ref_wav_24).transpose(1, 2).to(dtype=self.dtype)
@@ -146,7 +149,8 @@ class S3Token2Mel(torch.nn.Module):
         # Resample to 16kHz
         ref_wav_16 = ref_wav
         if ref_sr != S3_SR:
-            ref_wav_16 = get_resampler(ref_sr, S3_SR, device)(ref_wav)
+            ref_wav_16 = get_resampler(ref_sr, S3_SR, "cpu")(ref_wav.cpu())
+        ref_wav_16 = ref_wav_16.to(device)
 
         # Speaker embedding
         ref_x_vector = self.speaker_encoder.inference(ref_wav_16.to(dtype=self.dtype))
